@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0a1612">
-  <title>SQL-тренажёр: JOIN</title>
+  <title>SQL-тренажёр: TO_DATE · TO_CHAR · TO_NUMBER</title>
   <style>
     *,*::before,*::after{box-sizing:border-box}
     html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
@@ -184,7 +184,7 @@
         <div class="brand-icon">SQL</div>
         <div>
           <h1>Тренажёр SQL</h1>
-          <span>INNER · LEFT/RIGHT · FULL · CROSS JOIN</span>
+          <span>TO_DATE · TO_CHAR · TO_NUMBER</span>
         </div>
       </div>
       <div class="progress-pill" id="progressPill">Задание <b id="taskNum">1</b> из <b id="taskTotal">4</b></div>
@@ -234,7 +234,7 @@
     <div class="modal">
       <div class="modal-icon">🎉</div>
       <h2>Отлично!</h2>
-      <p>Вы освоили соединения таблиц: INNER, LEFT/RIGHT, FULL и CROSS JOIN.</p>
+      <p>Вы освоили функции преобразования типов: TO_DATE, TO_CHAR и TO_NUMBER.</p>
       <button type="button" id="btnRestart">Пройти заново</button>
     </div>
   </div>
@@ -284,6 +284,7 @@
     const parts = [];
     let cur = '';
     let inQuote = false;
+    let depth = 0;
     for (let i = 0; i < str.length; i++) {
       const ch = str[i];
       if (ch === "'" && !inQuote) { inQuote = true; cur += ch; continue; }
@@ -291,7 +292,11 @@
         if (str[i + 1] === "'") { cur += "''"; i++; continue; }
         inQuote = false; cur += ch; continue;
       }
-      if (ch === ',' && !inQuote) { parts.push(cur.trim()); cur = ''; continue; }
+      if (!inQuote) {
+        if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+        else if (ch === ',' && depth === 0) { parts.push(cur.trim()); cur = ''; continue; }
+      }
       cur += ch;
     }
     if (cur.trim()) parts.push(cur.trim());
@@ -305,24 +310,19 @@
     if (asMatch) {
       expr = asMatch[1].trim();
       alias = asMatch[2].toLowerCase();
+    } else {
+      const bare = expr.replace(/["`]/g, '');
+      if (/^[\w.]+$/.test(bare)) alias = bare.includes('.') ? bare.split('.').pop().toLowerCase() : bare.toLowerCase();
     }
-    if (expr === '*') return { type: 'star' };
-    const q = expr.match(/^["`]?(\w+)["`]?\s*\.\s*["`]?(\w+)["`]?$/);
-    if (q) {
-      const col = q[2].toLowerCase();
-      return { type: 'col', name: q[1].toLowerCase() + '.' + col, alias: alias || col };
-    }
-    const name = expr.replace(/["`]/g, '').toLowerCase();
-    return { type: 'col', name, alias: alias || name };
+    return { expr, alias };
   }
 
   function parseOrderBy(str){
     const items = [];
     for (const part of str.split(',')) {
-      const m = part.trim().match(/^(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?(?:\s+(ASC|DESC))?$/i);
+      const m = part.trim().match(/^["`]?(\w+)["`]?(?:\s+(ASC|DESC))?$/i);
       if (!m) return null;
-      const col = m[1] ? m[1].toLowerCase() + '.' + m[2].toLowerCase() : m[2].toLowerCase();
-      items.push({ col, dir: (m[3] || 'ASC').toUpperCase() });
+      items.push({ col: m[1].toLowerCase(), dir: (m[2] || 'ASC').toUpperCase() });
     }
     return items.length ? items : null;
   }
@@ -332,145 +332,283 @@
     if (!m) return null;
     const name = m[1].toLowerCase();
     const alias = (m[2] || m[1]).toLowerCase();
-    if (/^(inner|left|right|full|cross|join|on|where|order|by|as|select|from)$/i.test(alias) && !m[2]) {
-      return { name, alias: name };
-    }
     return { name, alias };
   }
 
-  function parseEqCond(str){
-    const m = str.trim().match(
-      /^(\w+)\.(\w+)\s*(\(\s*\+\s*\))?\s*=\s*(\w+)\.(\w+)\s*(\(\s*\+\s*\))?$/i
-    );
-    if (!m) return null;
-    return {
-      leftAlias: m[1].toLowerCase(),
-      leftCol: m[2].toLowerCase(),
-      leftPlus: !!m[3],
-      rightAlias: m[4].toLowerCase(),
-      rightCol: m[5].toLowerCase(),
-      rightPlus: !!m[6]
-    };
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const SYSDATE_VAL = new Date(2024, 7, 13, 15, 30, 45);
+
+  function splitArgs(inner){
+    const args = [];
+    let cur = '', depth = 0, inQuote = false;
+    for (let i = 0; i < inner.length; i++) {
+      const ch = inner[i];
+      if (ch === "'" && !inQuote) { inQuote = true; cur += ch; continue; }
+      if (ch === "'" && inQuote) {
+        if (inner[i + 1] === "'") { cur += "''"; i++; continue; }
+        inQuote = false; cur += ch; continue;
+      }
+      if (!inQuote) {
+        if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+        else if (ch === ',' && depth === 0) { args.push(cur.trim()); cur = ''; continue; }
+      }
+      cur += ch;
+    }
+    if (cur.trim()) args.push(cur.trim());
+    return args;
   }
 
-  function parseFromClause(fromPart){
-    fromPart = fromPart.replace(/,\s*(?=(?:INNER|LEFT|RIGHT|FULL|CROSS)\b)/i, ' ').trim();
-    const ansi = fromPart.match(
-      /^(.+?)\s+(INNER\s+JOIN|LEFT(?:\s+OUTER)?\s+JOIN|RIGHT(?:\s+OUTER)?\s+JOIN|FULL(?:\s+OUTER)?\s+JOIN|CROSS\s+JOIN)\s+(.+)$/i
-    );
-    if (ansi) {
-      const left = parseTableRef(ansi[1]);
-      if (!left) return null;
-      const joinTok = ansi[2].toUpperCase();
-      let joinType = 'INNER';
-      if (joinTok.startsWith('LEFT')) joinType = 'LEFT';
-      else if (joinTok.startsWith('RIGHT')) joinType = 'RIGHT';
-      else if (joinTok.startsWith('FULL')) joinType = 'FULL';
-      else if (joinTok.startsWith('CROSS')) joinType = 'CROSS';
-      let rightStr = ansi[3].trim();
-      let on = null;
-      const onMatch = rightStr.match(/^(.+?)\s+ON\s+(.+)$/i);
-      if (onMatch) {
-        rightStr = onMatch[1].trim();
-        on = parseEqCond(onMatch[2]);
-        if (!on) return null;
-      } else if (joinType !== 'CROSS') {
+  function extractCall(expr){
+    const m = expr.match(/^(\w+)\s*\(/i);
+    if (!m) return null;
+    let depth = 0, start = expr.indexOf('(');
+    for (let i = start; i < expr.length; i++) {
+      if (expr[i] === '(') depth++;
+      else if (expr[i] === ')') {
+        depth--;
+        if (depth === 0) {
+          if (expr.slice(i + 1).trim()) return null;
+          const inner = expr.slice(start + 1, i);
+          return { name: m[1].toUpperCase(), args: splitArgs(inner) };
+        }
+      }
+    }
+    return null;
+  }
+
+  function unquoteStr(s){
+    s = s.trim();
+    if (s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1).replace(/''/g, "'");
+    return s;
+  }
+
+  function parseNlsNumeric(nlsStr){
+    const m = nlsStr.match(/NLS_NUMERIC_CHARACTERS\s*=\s*'([^']*)'/i);
+    const chars = m ? m[1] : '.,';
+    return { decimal: chars[0] || '.', group: chars[1] || ',' };
+  }
+
+  function oracleToDate(str, mask){
+    str = unquoteStr(String(str));
+    mask = unquoteStr(mask);
+    let si = 0, mi = 0;
+    let y, mo, d, h = 0, miTime = 0, s = 0;
+    while (mi < mask.length) {
+      const rem = mask.slice(mi);
+      if (rem.startsWith('YYYY')) {
+        y = parseInt(str.slice(si, si + 4), 10); si += 4; mi += 4;
+      } else if (rem.startsWith('HH24')) {
+        h = parseInt(str.slice(si, si + 2), 10); si += 2; mi += 4;
+      } else if (rem.startsWith('DD')) {
+        d = parseInt(str.slice(si, si + 2), 10); si += 2; mi += 2;
+      } else if (rem.startsWith('MM')) {
+        mo = parseInt(str.slice(si, si + 2), 10); si += 2; mi += 2;
+      } else if (rem.startsWith('MI')) {
+        miTime = parseInt(str.slice(si, si + 2), 10); si += 2; mi += 2;
+      } else if (rem.startsWith('SS')) {
+        s = parseInt(str.slice(si, si + 2), 10); si += 2; mi += 2;
+      } else if (str[si] === mask[mi]) {
+        si++; mi++;
+      } else {
+        mi++;
+      }
+    }
+    return new Date(y, mo - 1, d, h, miTime, s);
+  }
+
+  function asDate(val){
+    if (val instanceof Date) return val;
+    if (val == null) return null;
+    const s = String(val);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2}):(\d{2}))?/);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+    return oracleToDate(s, 'YYYY-MM-DD');
+  }
+
+  function pad2(n){ return n < 10 ? '0' + n : String(n); }
+
+  function oracleToChar(val, mask){
+    let fm = false;
+    mask = unquoteStr(mask);
+    if (mask.startsWith('FM')) { fm = true; mask = mask.slice(2); }
+    mask = mask;
+    if (typeof val === 'number') {
+      let pattern = mask.replace(/B/g, '');
+      const hasSign = pattern.includes('S');
+      pattern = pattern.replace(/S/g, '');
+      const decIdx = pattern.indexOf('D');
+      let intPart = pattern, decPart = '';
+      if (decIdx >= 0) { intPart = pattern.slice(0, decIdx); decPart = pattern.slice(decIdx + 1); }
+      const intWidth = (intPart.match(/9/g) || []).length + (intPart.match(/0/g) || []).length;
+      const decWidth = (decPart.match(/9/g) || []).length + (decPart.match(/0/g) || []).length;
+      let num = Math.abs(val);
+      let intStr = decWidth ? String(Math.floor(num)) : String(Math.round(num));
+      let decStr = '';
+      if (decWidth) {
+        decStr = String(Math.round((num - Math.floor(num)) * Math.pow(10, decWidth))).padStart(decWidth, '0');
+      }
+      if (!fm) intStr = intStr.padStart(intWidth, ' ');
+      else intStr = intStr;
+      let out = intStr;
+      if (decWidth) out += '.' + decStr;
+      if (hasSign && val < 0) out = '-' + out;
+      return out;
+    }
+    const dt = asDate(val);
+    if (!dt || isNaN(dt.getTime())) return null;
+    let out = '';
+    let i = 0;
+    while (i < mask.length) {
+      if (mask.startsWith('YYYY', i)) { out += dt.getFullYear(); i += 4; }
+      else if (mask.startsWith('HH24', i)) { out += pad2(dt.getHours()); i += 4; }
+      else if (mask.startsWith('DD', i)) { out += pad2(dt.getDate()); i += 2; }
+      else if (mask.startsWith('MM', i)) { out += pad2(dt.getMonth() + 1); i += 2; }
+      else if (mask.startsWith('MI', i)) { out += pad2(dt.getMinutes()); i += 2; }
+      else if (mask.startsWith('SS', i)) { out += pad2(dt.getSeconds()); i += 2; }
+      else if (mask.startsWith('Mon', i)) { out += MONTHS[dt.getMonth()]; i += 3; }
+      else { out += mask[i]; i++; }
+    }
+    return out;
+  }
+
+  function oracleToNumber(str, mask, nlsStr){
+    str = unquoteStr(String(str));
+    mask = unquoteStr(mask).toUpperCase();
+    const nls = parseNlsNumeric(nlsStr || '');
+    let s = str;
+    if (nls.group && nls.group !== ' ') s = s.split(nls.group).join('');
+    if (nls.decimal !== '.') s = s.replace(nls.decimal, '.');
+    s = s.replace(/[^\d.\-+]/g, '');
+    const n = parseFloat(s);
+    return isNaN(n) ? null : n;
+  }
+
+  function splitConcat(expr){
+    const parts = [];
+    let cur = '', depth = 0, inQuote = false;
+    for (let i = 0; i < expr.length; i++) {
+      const ch = expr[i];
+      if (ch === "'" && !inQuote) { inQuote = true; cur += ch; continue; }
+      if (ch === "'" && inQuote) {
+        if (expr[i + 1] === "'") { cur += "''"; i++; continue; }
+        inQuote = false; cur += ch; continue;
+      }
+      if (!inQuote && ch === '|' && expr[i + 1] === '|') {
+        parts.push(cur.trim()); cur = ''; i++; continue;
+      }
+      if (!inQuote) {
+        if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+      }
+      cur += ch;
+    }
+    if (cur.trim()) parts.push(cur.trim());
+    return parts.length ? parts : [expr];
+  }
+
+  function evalExpr(expr, row, ctx){
+    expr = expr.trim();
+    if (!expr) return null;
+
+    const call = extractCall(expr);
+    if (call) {
+      const args = call.args.map(a => evalExpr(a, row, ctx));
+      if (call.name === 'TO_DATE') return oracleToDate(args[0], args[1]);
+      if (call.name === 'TO_CHAR') return oracleToChar(args[0], args[1]);
+      if (call.name === 'TO_NUMBER') return oracleToNumber(args[0], args[1], args[2]);
+      if (call.name === 'SUM') {
+        if (!ctx.aggregateMode) throw new Error('SUM доступен только в SELECT.');
         return null;
       }
-      const right = parseTableRef(rightStr);
-      if (!right) return null;
-      return { joinType, tables: [left, right], on };
+      throw new Error('Неизвестная функция: ' + call.name);
     }
-    const parts = splitByComma(fromPart);
-    if (!parts.length) return null;
-    const tables = [];
-    for (const p of parts) {
-      const t = parseTableRef(p);
-      if (!t) return null;
-      tables.push(t);
+
+    if (/^SYSDATE$/i.test(expr)) return SYSDATE_VAL;
+
+    const num = expr.match(/^-?\d+(\.\d+)?$/);
+    if (num) return parseFloat(expr);
+
+    if (expr.startsWith("'")) return unquoteStr(expr);
+
+    const col = expr.replace(/["`]/g, '').toLowerCase();
+    if (row && row[col] !== undefined) return row[col];
+    if (row && col.includes('.')) {
+      const bare = col.split('.').pop();
+      if (row[bare] !== undefined) return row[bare];
     }
-    return { joinType: tables.length > 1 ? 'COMMA' : 'NONE', tables, on: null };
+    if (ctx && ctx.columns && ctx.columns.includes(col)) return row ? row[col] : undefined;
+
+    if (expr.includes('||')) {
+      return splitConcat(expr).map(p => {
+        const v = evalExpr(p, row, ctx);
+        return v == null ? '' : String(v);
+      }).join('');
+    }
+
+    throw new Error('Не удалось вычислить выражение: ' + expr);
   }
 
-  function mergeRow(leftRef, leftRow, rightRef, rightRow){
-    const out = {};
-    for (const c of leftRef.table.columns) {
-      const v = leftRow ? leftRow[c.name] : null;
-      out[leftRef.alias + '.' + c.name] = v;
+  function parseWhereCond(str){
+    const ops = ['>=', '<=', '<>', '!=', '=', '>', '<'];
+    for (const op of ops) {
+      const idx = findOpOutsideQuotes(str, op);
+      if (idx < 0) continue;
+      return {
+        left: str.slice(0, idx).trim(),
+        op: op === '!=' ? '<>' : op,
+        right: str.slice(idx + op.length).trim()
+      };
     }
-    for (const c of rightRef.table.columns) {
-      const v = rightRow ? rightRow[c.name] : null;
-      out[rightRef.alias + '.' + c.name] = v;
-    }
-    return out;
+    return null;
   }
 
-  function valsEqual(a, b){
-    if (a == null && b == null) return true;
-    if (a == null || b == null) return false;
-    return a === b || String(a) === String(b);
+  function findOpOutsideQuotes(str, op){
+    let inQuote = false;
+    for (let i = 0; i <= str.length - op.length; i++) {
+      if (str[i] === "'") {
+        if (inQuote && str[i + 1] === "'") { i++; continue; }
+        inQuote = !inQuote; continue;
+      }
+      if (!inQuote && str.slice(i, i + op.length) === op) return i;
+    }
+    return -1;
   }
 
-  function performJoin(leftRef, rightRef, joinType, on){
-    const L = leftRef.table.rows;
-    const R = rightRef.table.rows;
-    const out = [];
-    if (joinType === 'CROSS') {
-      for (const lr of L) for (const rr of R) out.push(mergeRow(leftRef, lr, rightRef, rr));
-      return out;
+  function compareVals(a, b, op){
+    if (a instanceof Date || b instanceof Date) {
+      const da = asDate(a), db = asDate(b);
+      if (!da || !db) return false;
+      a = da.getTime(); b = db.getTime();
+    } else if (typeof a === 'number' || typeof b === 'number') {
+      a = a == null ? null : Number(a);
+      b = b == null ? null : Number(b);
     }
-    const onNorm = { ...on };
-    if (on.leftAlias === rightRef.alias && on.rightAlias === leftRef.alias) {
-      onNorm.leftAlias = on.rightAlias;
-      onNorm.leftCol = on.rightCol;
-      onNorm.rightAlias = on.leftAlias;
-      onNorm.rightCol = on.leftCol;
+    switch (op) {
+      case '=': return a == b;
+      case '<>': return a != b;
+      case '>': return a > b;
+      case '<': return a < b;
+      case '>=': return a >= b;
+      case '<=': return a <= b;
+      default: return false;
     }
-    const pairsEqual = (lr, rr) => valsEqual(lr[onNorm.leftCol], rr[onNorm.rightCol]);
+  }
 
-    if (joinType === 'INNER') {
-      for (const lr of L) for (const rr of R) if (pairsEqual(lr, rr)) out.push(mergeRow(leftRef, lr, rightRef, rr));
-      return out;
-    }
-    if (joinType === 'LEFT') {
-      for (const lr of L) {
-        let found = false;
-        for (const rr of R) {
-          if (pairsEqual(lr, rr)) { out.push(mergeRow(leftRef, lr, rightRef, rr)); found = true; }
-        }
-        if (!found) out.push(mergeRow(leftRef, lr, rightRef, null));
+  function isAggregateExpr(expr){
+    return /^\s*SUM\s*\(/i.test(expr);
+  }
+
+  function evalAggregate(name, argExpr, rows, ctx){
+    if (name === 'SUM') {
+      let total = 0;
+      for (const row of rows) {
+        const v = evalExpr(argExpr, row, ctx);
+        if (v != null) total += Number(v);
       }
-      return out;
+      return total;
     }
-    if (joinType === 'RIGHT') {
-      for (const rr of R) {
-        let found = false;
-        for (const lr of L) {
-          if (pairsEqual(lr, rr)) { out.push(mergeRow(leftRef, lr, rightRef, rr)); found = true; }
-        }
-        if (!found) out.push(mergeRow(leftRef, null, rightRef, rr));
-      }
-      return out;
-    }
-    if (joinType === 'FULL') {
-      const matchedR = new Set();
-      for (const lr of L) {
-        let found = false;
-        for (let i = 0; i < R.length; i++) {
-          if (pairsEqual(lr, R[i])) {
-            out.push(mergeRow(leftRef, lr, rightRef, R[i]));
-            matchedR.add(i);
-            found = true;
-          }
-        }
-        if (!found) out.push(mergeRow(leftRef, lr, rightRef, null));
-      }
-      for (let i = 0; i < R.length; i++) {
-        if (!matchedR.has(i)) out.push(mergeRow(leftRef, null, rightRef, R[i]));
-      }
-      return out;
-    }
-    return out;
+    return null;
   }
 
   function executeSql(dbState, sql){
@@ -490,7 +628,7 @@
     const stmt = stmts[0];
     const selectMatch = stmt.match(/^SELECT\s+(DISTINCT\s+)?(.+)\s+FROM\s+(.+)$/i);
     if (!selectMatch) {
-      messages.push({ type: 'err', text: 'Неподдерживаемая команда. В этом тренажёре доступен SELECT с JOIN.' });
+      messages.push({ type: 'err', text: 'Неподдерживаемая команда. Доступен SELECT с функциями TO_DATE, TO_CHAR, TO_NUMBER.' });
       return { ok: false, messages };
     }
 
@@ -509,74 +647,93 @@
       rest = rest.slice(0, whereMatch.index).trim();
     }
 
-    const fromInfo = parseFromClause(rest);
-    if (!fromInfo) {
-      messages.push({ type: 'err', text: 'Ошибка: не удалось разобрать FROM / JOIN.' });
-      return { ok: false, messages };
-    }
-
-    const tableRefs = [];
-    for (const t of fromInfo.tables) {
-      const table = dbState.tables[t.name];
-      if (!table) {
-        messages.push({ type: 'err', text: 'Ошибка: таблица «' + t.name + '» не найдена.' });
-        return { ok: false, messages };
-      }
-      tableRefs.push({ name: t.name, alias: t.alias, table });
-    }
-
-    let joinType = fromInfo.joinType;
-    let on = fromInfo.on;
-
-    if (joinType === 'COMMA' || joinType === 'NONE') {
-      if (tableRefs.length === 1) {
-        joinType = 'NONE';
-      } else if (tableRefs.length === 2) {
-        if (!whereStr) {
-          joinType = 'CROSS';
-        } else {
-          const parts = whereStr.split(/\s+AND\s+/i).map(s => s.trim());
-          const eq = parseEqCond(parts[0]);
-          if (!eq || parts.length !== 1) {
-            messages.push({ type: 'err', text: 'Ошибка: в WHERE укажите условие соединения вида a.col = b.col.' });
-            return { ok: false, messages };
-          }
-          on = eq;
-          if (eq.rightPlus && !eq.leftPlus) joinType = 'LEFT';
-          else if (eq.leftPlus && !eq.rightPlus) joinType = 'RIGHT';
-          else if (!eq.leftPlus && !eq.rightPlus) joinType = 'INNER';
-          else {
-            messages.push({ type: 'err', text: 'Ошибка: некорректный синтаксис (+).' });
-            return { ok: false, messages };
-          }
-          whereStr = null;
-        }
-      } else {
-        messages.push({ type: 'err', text: 'Ошибка: поддерживается соединение двух таблиц.' });
-        return { ok: false, messages };
-      }
-    } else if (whereStr) {
-      messages.push({ type: 'err', text: 'Ошибка: для ANSI JOIN условие задавайте в ON, без WHERE.' });
+    const tableRef = parseTableRef(rest);
+    if (!tableRef) {
+      messages.push({ type: 'err', text: 'Ошибка: не удалось разобрать FROM.' });
       return { ok: false, messages };
     }
 
     let sourceRows;
-    if (joinType === 'NONE') {
-      sourceRows = tableRefs[0].table.rows.map(r => {
-        const out = {};
-        for (const c of tableRefs[0].table.columns) {
-          out[tableRefs[0].alias + '.' + c.name] = r[c.name];
-          out[c.name] = r[c.name];
-        }
-        return out;
-      });
+    if (tableRef.name === 'dual') {
+      sourceRows = [{}];
     } else {
-      if (!on && joinType !== 'CROSS') {
-        messages.push({ type: 'err', text: 'Ошибка: укажите условие ON для JOIN.' });
+      const table = dbState.tables[tableRef.name];
+      if (!table) {
+        messages.push({ type: 'err', text: 'Ошибка: таблица «' + tableRef.name + '» не найдена.' });
         return { ok: false, messages };
       }
-      sourceRows = performJoin(tableRefs[0], tableRefs[1], joinType, on);
+      sourceRows = table.rows.map(r => {
+        const out = {};
+        for (const c of table.columns) out[c.name] = r[c.name];
+        return out;
+      });
     }
+
+    if (whereStr) {
+      const cond = parseWhereCond(whereStr);
+      if (!cond) {
+        messages.push({ type: 'err', text: 'Ошибка: не удалось разобрать условие WHERE.' });
+        return { ok: false, messages };
+      }
+      try {
+        sourceRows = sourceRows.filter(row => {
+          const lv = evalExpr(cond.left, row, {});
+          const rv = evalExpr(cond.right, row, {});
+          return compareVals(lv, rv, cond.op);
+        });
+      } catch (e) {
+        messages.push({ type: 'err', text: 'Ошибка в WHERE: ' + e.message });
+        return { ok: false, messages };
+      }
+    }
+
+    const items = splitByComma(selectMatch[2]).map(parseSelectItem);
+    if (!items.length) {
+      messages.push({ type: 'err', text: 'Ошибка: укажите столбцы после SELECT.' });
+      return { ok: false, messages };
+    }
+
+    const hasAgg = items.some(it => isAggregateExpr(it.expr));
+    const outCols = [];
+    const projectors = [];
+
+    try {
+      if (hasAgg) {
+        const ctx = { aggregateMode: true };
+        for (const it of items) {
+          const agg = extractCall(it.expr);
+          if (agg && agg.name === 'SUM') {
+            const val = evalAggregate('SUM', agg.args[0], sourceRows, ctx);
+            const col = it.alias || 'sum';
+            outCols.push(col);
+            projectors.push(() => val);
+          } else {
+            messages.push({ type: 'err', text: 'С агрегатом SUM используйте только агрегатные выражения.' });
+            return { ok: false, messages };
+          }
+        }
+        sourceRows = [{}];
+      } else {
+        for (const it of items) {
+          const col = it.alias;
+          if (!col) {
+            messages.push({ type: 'err', text: 'Укажите alias через AS для выражений: ' + it.expr });
+            return { ok: false, messages };
+          }
+          outCols.push(col);
+          projectors.push(row => evalExpr(it.expr, row, {}));
+        }
+      }
+    } catch (e) {
+      messages.push({ type: 'err', text: 'Ошибка в SELECT: ' + e.message });
+      return { ok: false, messages };
+    }
+
+    let resultRows = sourceRows.map(row => {
+      const out = {};
+      outCols.forEach((name, i) => { out[name] = projectors[i](row); });
+      return out;
+    });
 
     if (orderByStr) {
       const orderItems = parseOrderBy(orderByStr);
@@ -584,10 +741,9 @@
         messages.push({ type: 'err', text: 'Ошибка: не удалось разобрать ORDER BY.' });
         return { ok: false, messages };
       }
-      sourceRows = sourceRows.slice().sort((a, b) => {
+      resultRows = resultRows.slice().sort((a, b) => {
         for (const o of orderItems) {
-          const av = a[o.col] !== undefined ? a[o.col] : a[o.col.split('.').pop()];
-          const bv = b[o.col] !== undefined ? b[o.col] : b[o.col.split('.').pop()];
+          const av = a[o.col], bv = b[o.col];
           let cmp = 0;
           if (av == null && bv == null) cmp = 0;
           else if (av == null) cmp = 1;
@@ -599,51 +755,6 @@
         return 0;
       });
     }
-
-    const items = splitByComma(selectMatch[2]).map(parseSelectItem);
-    if (!items.length) {
-      messages.push({ type: 'err', text: 'Ошибка: укажите столбцы после SELECT.' });
-      return { ok: false, messages };
-    }
-
-    const outCols = [];
-    const projectors = [];
-    for (const it of items) {
-      if (it.type === 'star') {
-        for (const ref of tableRefs) {
-          for (const c of ref.table.columns) {
-            outCols.push(c.name);
-            const key = ref.alias + '.' + c.name;
-            projectors.push(row => row[key]);
-          }
-        }
-      } else {
-        const key = it.name;
-        const sample = sourceRows[0];
-        const bare = key.includes('.') ? key.split('.').pop() : key;
-        if (sample && sample[key] === undefined && sample[bare] === undefined && sourceRows.length) {
-          messages.push({ type: 'err', text: 'Ошибка: столбец «' + it.name + '» не найден.' });
-          return { ok: false, messages };
-        }
-        if (!sourceRows.length) {
-          const known = tableRefs.some(ref =>
-            ref.table.columns.some(c => key === ref.alias + '.' + c.name || key === c.name)
-          );
-          if (!known) {
-            messages.push({ type: 'err', text: 'Ошибка: столбец «' + it.name + '» не найден.' });
-            return { ok: false, messages };
-          }
-        }
-        outCols.push(it.alias);
-        projectors.push(row => (row[key] !== undefined ? row[key] : row[bare]));
-      }
-    }
-
-    let resultRows = sourceRows.map(row => {
-      const out = {};
-      outCols.forEach((name, i) => { out[name] = projectors[i](row); });
-      return out;
-    });
 
     if (distinct) {
       const seen = new Set();
@@ -660,41 +771,66 @@
     return { ok: true, messages, resultSet };
   }
 
-  const DEPT_COLS = [
-    { name: 'department_id', type: 'INTEGER', pk: true },
-    { name: 'department_name', type: 'VARCHAR2(50)' }
+  const ORDER_COLS = [
+    { name: 'order_id', type: 'INTEGER', pk: true },
+    { name: 'order_date_str', type: 'VARCHAR2(10)' },
+    { name: 'customer', type: 'VARCHAR2(50)' }
   ];
   const EMP_COLS = [
     { name: 'employee_id', type: 'INTEGER', pk: true },
     { name: 'full_name', type: 'VARCHAR2(100)' },
-    { name: 'department_id', type: 'INTEGER' }
+    { name: 'hire_date', type: 'VARCHAR2(10)' }
   ];
-  const DEPTS = [
-    { department_id: 10, department_name: 'IT' },
-    { department_id: 20, department_name: 'HR' },
-    { department_id: 30, department_name: 'Sales' },
-    { department_id: 40, department_name: 'Marketing' }
+  const CLAIM_COLS = [
+    { name: 'claim_id', type: 'INTEGER', pk: true },
+    { name: 'amount', type: 'VARCHAR2(20)' }
+  ];
+  const ORDERS = [
+    { order_id: 1, order_date_str: '2024-01-10', customer: 'ООО Альфа' },
+    { order_id: 2, order_date_str: '2024-02-27', customer: 'ИП Бета' },
+    { order_id: 3, order_date_str: '2024-03-15', customer: 'ООО Гамма' },
+    { order_id: 4, order_date_str: '2024-04-01', customer: 'ЗАО Дельта' }
   ];
   const EMPS = [
-    { employee_id: 1, full_name: 'Иванов И.И.', department_id: 10 },
-    { employee_id: 2, full_name: 'Петров П.П.', department_id: 20 },
-    { employee_id: 3, full_name: 'Сидоров С.С.', department_id: 10 },
-    { employee_id: 4, full_name: 'Козлова К.К.', department_id: null },
-    { employee_id: 5, full_name: 'Новиков Н.Н.', department_id: 30 }
+    { employee_id: 1, full_name: 'Иванов И.И.', hire_date: '2024-02-27' },
+    { employee_id: 2, full_name: 'Петров П.П.', hire_date: '2023-11-05' },
+    { employee_id: 3, full_name: 'Сидоров С.С.', hire_date: '2022-07-18' }
+  ];
+  const CLAIMS = [
+    { claim_id: 1, amount: '1,234.50' },
+    { claim_id: 2, amount: '567.25' },
+    { claim_id: 3, amount: '100.00' }
   ];
 
-  function makeHrDb(){
+  function makeOrdersDb(){
     return {
       tables: {
-        departments: { columns: DEPT_COLS.map(c => ({ ...c })), rows: DEPTS.map(r => ({ ...r })) },
+        orders: { columns: ORDER_COLS.map(c => ({ ...c })), rows: ORDERS.map(r => ({ ...r })) }
+      }
+    };
+  }
+  function makeEmployeesDb(){
+    return {
+      tables: {
         employees: { columns: EMP_COLS.map(c => ({ ...c })), rows: EMPS.map(r => ({ ...r })) }
       }
     };
+  }
+  function makeClaimsDb(){
+    return {
+      tables: {
+        external_claims: { columns: CLAIM_COLS.map(c => ({ ...c })), rows: CLAIMS.map(r => ({ ...r })) }
+      }
+    };
+  }
+  function makeDualDb(){
+    return { tables: {} };
   }
 
   function sameVal(a, b){
     if (a == null && b == null) return true;
     if (a == null || b == null) return false;
+    if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) < 0.001;
     return a === b || String(a) === String(b);
   }
 
@@ -732,91 +868,81 @@
     return { pass: true };
   }
 
-  const SYNTAX_INNER =
-    '<br><br><code>SELECT e.full_name,<br>       d.department_name<br>  FROM employees e, departments d<br> WHERE e.department_id = d.department_id;</code>';
-  const SYNTAX_OUTER =
-    '<br><br><code>SELECT e.full_name,<br>       d.department_name<br>  FROM employees e<br>  LEFT JOIN departments d<br>    ON e.department_id = d.department_id;</code>' +
-    '<br><br><code>SELECT e.full_name,<br>       d.department_name<br>  FROM employees e, departments d<br> WHERE e.department_id = d.department_id (+);</code>';
-  const SYNTAX_FULL =
-    '<br><br><code>SELECT ...<br>FROM a<br>FULL JOIN b<br>ON b.id = a.id;</code>';
-  const SYNTAX_CROSS =
-    '<br><br><code>SELECT ...<br>FROM a<br>CROSS JOIN b;</code>';
+  const SYNTAX_TO_DATE =
+    '<br><br><code>TO_DATE(строка с датой, \'маска формата\')\n\nTO_DATE(\'2024-02-27\', \'YYYY-MM-DD\')</code>';
+  const SYNTAX_TO_CHAR =
+    '<br><br><code>TO_CHAR(поле с датой / поле с числом, \'маска формата\')\n\nTO_CHAR(SYSDATE, \'DD-Mon-YYYY HH24:MI:SS\')\n\nSELECT\n    \'[\' || TO_CHAR(123, \'9999\') || \']\' AS "Без FM",\n    \'[\' || TO_CHAR(123, \'FM9999\') || \']\' AS "С FM"\nFROM dual;</code>';
+  const SYNTAX_TO_NUMBER =
+    '<br><br><code>TO_NUMBER(строка с числом, \'маска формата\', \'nls_параметры\')\n\nSELECT\n  SUM(TO_NUMBER(amount, \'999G999D99\', \'NLS_NUMERIC_CHARACTERS = \'\'.,\'\')) AS total_amount\nFROM external_claims;</code>';
 
-  const INNER_ROWS = [
-    ['Иванов И.И.', 'IT'],
-    ['Петров П.П.', 'HR'],
-    ['Сидоров С.С.', 'IT'],
-    ['Новиков Н.Н.', 'Sales']
+  const TO_DATE_ROWS = [
+    [3, '2024-03-15'],
+    [4, '2024-04-01']
   ];
-  const LEFT_ROWS = [
-    ['Иванов И.И.', 'IT'],
-    ['Петров П.П.', 'HR'],
-    ['Сидоров С.С.', 'IT'],
-    ['Козлова К.К.', null],
-    ['Новиков Н.Н.', 'Sales']
+  const TO_CHAR_ROWS = [
+    ['Иванов И.И.', '27-Feb-2024'],
+    ['Петров П.П.', '05-Nov-2023'],
+    ['Сидоров С.С.', '18-Jul-2022']
   ];
-  const FULL_ROWS = [
-    ['Иванов И.И.', 'IT'],
-    ['Петров П.П.', 'HR'],
-    ['Сидоров С.С.', 'IT'],
-    ['Козлова К.К.', null],
-    ['Новиков Н.Н.', 'Sales'],
-    [null, 'Marketing']
+  const TO_CHAR_FM_ROWS = [
+    ['[ 123]', '[123]']
   ];
-  const CROSS_ROWS = EMPS.flatMap(e => DEPTS.map(d => [e.full_name, d.department_name]));
+  const TO_NUMBER_ROWS = [
+    [1901.75]
+  ];
 
   const TASKS = [
     {
-      id: 'inner_join',
-      label: 'INNER JOIN',
-      text: 'Выведите <b>full_name</b> и <b>department_name</b> для сотрудников, у которых есть отдел (только совпадающие строки).' + SYNTAX_INNER,
-      initDb: () => makeHrDb(),
+      id: 'to_date',
+      label: 'TO_DATE',
+      text: 'В таблице <b>orders</b> даты хранятся как текст в столбце <b>order_date_str</b>. Выведите <b>order_id</b> и <b>order_date_str</b> для заказов с датой <b>не раньше</b> 1 марта 2024 года. Отсортируйте по <b>order_id</b>.' + SYNTAX_TO_DATE,
+      initDb: () => makeOrdersDb(),
       check(dbState, result){
         return matchResult(result && result.resultSet, {
-          columns: ['full_name', 'department_name'],
-          rows: INNER_ROWS
-        }, { ordered: false, hint: 'FROM employees e, departments d WHERE e.department_id = d.department_id' });
+          columns: ['order_id', 'order_date_str'],
+          rows: TO_DATE_ROWS
+        }, { ordered: true, hint: 'WHERE TO_DATE(order_date_str, \'YYYY-MM-DD\') >= TO_DATE(\'2024-03-01\', \'YYYY-MM-DD\')' });
       }
     },
     {
-      id: 'left_join',
-      label: 'LEFT JOIN и RIGHT JOIN',
-      text: 'Выведите <b>всех</b> сотрудников и их отделы (если есть). Подойдёт LEFT JOIN или синтаксис с <b>(+)</b>.' + SYNTAX_OUTER,
-      initDb: () => makeHrDb(),
+      id: 'to_char_date',
+      label: 'TO_CHAR — дата',
+      text: 'Выведите <b>full_name</b> и дату приёма <b>hire_date</b> в формате <b>DD-Mon-YYYY</b> (столбец <b>hire_fmt</b>). Сначала преобразуйте текст в дату через <b>TO_DATE</b>, затем отформатируйте через <b>TO_CHAR</b>. Отсортируйте по <b>full_name</b>.' + SYNTAX_TO_CHAR,
+      initDb: () => makeEmployeesDb(),
       check(dbState, result){
         return matchResult(result && result.resultSet, {
-          columns: ['full_name', 'department_name'],
-          rows: LEFT_ROWS
-        }, { ordered: false, hint: 'LEFT JOIN … ON e.department_id = d.department_id  или  WHERE e.department_id = d.department_id (+)' });
+          columns: ['full_name', 'hire_fmt'],
+          rows: TO_CHAR_ROWS
+        }, { ordered: true, hint: 'TO_CHAR(TO_DATE(hire_date, \'YYYY-MM-DD\'), \'DD-Mon-YYYY\') AS hire_fmt' });
       }
     },
     {
-      id: 'full_join',
-      label: 'FULL JOIN',
-      text: 'Выведите <b>full_name</b> и <b>department_name</b> так, чтобы попали и сотрудники без отдела, и отделы без сотрудников.' + SYNTAX_FULL,
-      initDb: () => makeHrDb(),
+      id: 'to_char_fm',
+      label: 'TO_CHAR — число и FM',
+      text: 'Сравните форматирование числа <b>123</b> с модификатором <b>FM</b> и без него. Выведите столбцы <b>bez_fm</b> и <b>s_fm</b> — значения в квадратных скобках, как в примере из теории. Используйте <b>FROM dual</b>.' + SYNTAX_TO_CHAR,
+      initDb: () => makeDualDb(),
       check(dbState, result){
         return matchResult(result && result.resultSet, {
-          columns: ['full_name', 'department_name'],
-          rows: FULL_ROWS
-        }, { ordered: false, hint: 'FROM employees e FULL JOIN departments d ON e.department_id = d.department_id' });
+          columns: ['bez_fm', 's_fm'],
+          rows: TO_CHAR_FM_ROWS
+        }, { ordered: true, hint: '[\' || TO_CHAR(123, \'9999\') || \']\' и TO_CHAR(123, \'FM9999\')' });
       }
     },
     {
-      id: 'cross_join',
-      label: 'CROSS JOIN',
-      text: 'Выведите декартово произведение: все пары <b>full_name</b> × <b>department_name</b>.' + SYNTAX_CROSS,
-      initDb: () => makeHrDb(),
+      id: 'to_number',
+      label: 'TO_NUMBER',
+      text: 'В таблице <b>external_claims</b> суммы хранятся как текст с разделителями (<b>amount</b>). Посчитайте общую сумму в столбце <b>total_amount</b> с помощью <b>TO_NUMBER</b> и маски <b>999G999D99</b>.' + SYNTAX_TO_NUMBER,
+      initDb: () => makeClaimsDb(),
       check(dbState, result){
         return matchResult(result && result.resultSet, {
-          columns: ['full_name', 'department_name'],
-          rows: CROSS_ROWS
-        }, { ordered: false, hint: 'FROM employees e CROSS JOIN departments d' });
+          columns: ['total_amount'],
+          rows: TO_NUMBER_ROWS
+        }, { ordered: true, hint: 'SUM(TO_NUMBER(amount, \'999G999D99\', \'NLS_NUMERIC_CHARACTERS = \'\'.,\'\'))' });
       }
     }
   ];
 
-  const COMPLETE_TEXT = 'Все задания выполнены! Вы освоили INNER, LEFT/RIGHT, FULL и CROSS JOIN.';
+  const COMPLETE_TEXT = 'Все задания выполнены! Вы освоили функции TO_DATE, TO_CHAR и TO_NUMBER.';
 
   taskTotal.textContent = String(TASKS.length);
 
