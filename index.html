@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a1612">
+  <title>SQL-тренажёр: JOIN</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+    body{
+      margin:0;min-height:100vh;min-height:100dvh;
+      font-family:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 0%, rgba(22,101,52,.35) 0%, transparent 55%),
+        radial-gradient(ellipse 70% 50% at 90% 100%, rgba(21,128,61,.2) 0%, transparent 50%),
+        #0a1612;
+      color:#e2e8f0;
+      display:flex;flex-direction:column;
+      padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));
+    }
+    .app{flex:1;display:flex;flex-direction:column;max-width:1200px;width:100%;margin:0 auto;min-height:0;gap:10px}
+
+    .header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .brand{display:flex;align-items:center;gap:10px}
+    .brand-icon{
+      width:36px;height:36px;border-radius:10px;
+      background:linear-gradient(135deg,#14532d 0%,#166534 100%);
+      border:1px solid rgba(74,222,128,.25);
+      box-shadow:0 4px 16px rgba(22,101,52,.4);
+      display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;
+    }
+    .brand h1{margin:0;font-size:1.05rem;font-weight:600;color:#f8fafc}
+    .brand span{font-size:.78rem;color:#94a3b8;display:block;margin-top:1px}
+    .progress-pill{
+      font-size:.78rem;padding:6px 12px;border-radius:999px;
+      background:rgba(15,40,30,.55);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+      border:1px solid rgba(74,222,128,.18);color:#cbd5e1;white-space:nowrap;
+    }
+    .progress-pill b{color:#4ade80}
+
+    .task-card{
+      background:rgba(15,40,30,.45);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+      border:1px solid rgba(74,222,128,.15);border-radius:14px;padding:14px 16px;
+      box-shadow:0 8px 32px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.05);
+    }
+    .task-card.success{border-color:rgba(74,222,128,.45);background:linear-gradient(135deg,rgba(20,83,45,.55) 0%,rgba(15,40,30,.5) 100%)}
+    .task-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:6px;font-weight:600}
+    .task-card.success .task-label{color:#86efac}
+    .task-text{margin:0;font-size:.95rem;line-height:1.55;color:#e2e8f0}
+    .task-text b{color:#6ee7b7;font-weight:600}
+    .task-text code{
+      display:block;margin-top:8px;padding:10px 12px;border-radius:8px;
+      background:rgba(8,18,14,.65);border:1px solid rgba(74,222,128,.12);
+      font-family:"Cascadia Code","Fira Code",Consolas,monospace;font-size:12px;color:#a7f3d0;line-height:1.5;white-space:pre-wrap;
+    }
+
+    .workspace{
+      flex:1;display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:0;
+    }
+    @media(max-width:860px){.workspace{grid-template-columns:1fr;grid-template-rows:auto auto}}
+
+    .panel{
+      display:flex;flex-direction:column;min-height:0;
+      background:rgba(15,40,30,.4);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+      border:1px solid rgba(74,222,128,.12);border-radius:14px;overflow:hidden;
+      box-shadow:0 8px 32px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .panel-head{
+      display:flex;align-items:center;justify-content:space-between;gap:8px;
+      padding:8px 12px;background:rgba(10,22,18,.6);border-bottom:1px solid rgba(74,222,128,.1);flex-shrink:0;
+    }
+    .panel-title{font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;display:flex;align-items:center;gap:6px}
+    .panel-dot{width:8px;height:8px;border-radius:50%}
+    .dot-editor{background:#22c55e}.dot-output{background:#fbbf24}.dot-schema{background:#34d399}
+
+    .editor-wrap{flex:1;display:flex;min-height:220px;position:relative;overflow:hidden}
+    .line-nums{
+      padding:12px 0 12px 10px;font-family:"Cascadia Code","Fira Code","JetBrains Mono",Consolas,monospace;
+      font-size:13px;line-height:1.55;color:#475569;text-align:right;user-select:none;min-width:36px;flex-shrink:0;
+      background:rgba(8,18,14,.7);border-right:1px solid rgba(74,222,128,.08);overflow:hidden;
+      white-space:pre;
+    }
+    .sql-input{
+      flex:1;resize:none;border:none;outline:none;
+      padding:12px 14px;margin:0;
+      font-family:"Cascadia Code","Fira Code","JetBrains Mono",Consolas,monospace;
+      font-size:13px;line-height:1.55;
+      background:rgba(8,18,14,.7);color:#e2e8f0;tab-size:2;min-height:220px;
+    }
+    .sql-input::placeholder{color:#475569}
+
+    .toolbar{
+      display:flex;align-items:center;gap:8px;padding:8px 12px;
+      border-top:1px solid rgba(74,222,128,.1);background:rgba(10,22,18,.6);flex-shrink:0;flex-wrap:wrap;
+    }
+    .btn-run{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:8px 18px;border:none;border-radius:8px;cursor:pointer;
+      font-family:inherit;font-size:.88rem;font-weight:600;
+      background:linear-gradient(135deg,#14532d 0%,#166534 100%);
+      color:#fff;box-shadow:0 2px 12px rgba(22,101,52,.45);
+      border:1px solid rgba(74,222,128,.2);
+      transition:transform .15s,box-shadow .15s;
+    }
+    .btn-run:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(22,101,52,.55)}
+    .btn-run:active{transform:translateY(0)}
+    .btn-secondary{
+      padding:7px 14px;border:1px solid rgba(74,222,128,.2);border-radius:8px;
+      background:rgba(15,40,30,.4);color:#94a3b8;font-family:inherit;font-size:.82rem;cursor:pointer;
+    }
+    .btn-secondary:hover{border-color:rgba(74,222,128,.35);color:#cbd5e1}
+    .hint-kbd{font-size:.75rem;color:#64748b;margin-left:auto}
+
+    .output-body,.schema-body{
+      flex:1;overflow:auto;padding:12px 14px;font-size:.88rem;line-height:1.5;min-height:120px;
+      -webkit-overflow-scrolling:touch;
+    }
+    .output-body{font-family:"Cascadia Code","Fira Code",Consolas,monospace;font-size:12.5px}
+    .output-empty{color:#64748b;font-style:italic;font-family:"Segoe UI",system-ui,sans-serif}
+    .msg{margin:0 0 8px;padding:8px 10px;border-radius:8px;border-left:3px solid}
+    .msg-ok{background:rgba(5,46,22,.6);border-color:#22c55e;color:#bbf7d0}
+    .msg-err{background:rgba(69,10,10,.6);border-color:#ef4444;color:#fecaca}
+    .msg-info{background:rgba(20,83,45,.45);border-color:#4ade80;color:#bbf7d0}
+
+    .schema-table{margin-bottom:12px;border:1px solid rgba(74,222,128,.12);border-radius:8px;overflow:hidden}
+    .schema-table-name{
+      padding:6px 10px;background:rgba(10,22,18,.6);font-weight:600;font-size:.82rem;color:#6ee7b7;
+      border-bottom:1px solid rgba(74,222,128,.1);
+    }
+    .schema-cols{padding:0;margin:0;list-style:none}
+    .schema-cols li{
+      padding:5px 10px;font-family:Consolas,monospace;font-size:12px;
+      border-bottom:1px solid rgba(74,222,128,.06);display:flex;gap:8px;align-items:baseline;
+    }
+    .schema-cols li:last-child{border-bottom:none}
+    .col-name{color:#e2e8f0}.col-type{color:#86efac;font-size:11px}
+    .col-pk{font-size:10px;background:rgba(20,83,45,.6);color:#fcd34d;padding:1px 5px;border-radius:4px}
+    .data-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+    .data-table th,.data-table td{padding:5px 8px;border:1px solid rgba(74,222,128,.1);text-align:left;font-family:Consolas,monospace}
+    .data-table th{background:rgba(10,22,18,.6);color:#86efac;font-weight:600;font-size:11px}
+    .data-table td{color:#cbd5e1}
+    .data-empty{padding:8px 10px;font-size:12px;color:#64748b;font-style:italic}
+
+    .bottom-row{display:grid;grid-template-columns:1fr;gap:10px}
+    @media(min-width:861px){.bottom-row{grid-column:1/-1}}
+
+    .toast{
+      position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
+      z-index:100;padding:12px 20px;border-radius:10px;font-size:.88rem;
+      background:rgba(15,40,30,.75);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+      border:1px solid rgba(74,222,128,.2);color:#e2e8f0;
+      box-shadow:0 8px 32px rgba(0,0,0,.4);
+      opacity:0;visibility:hidden;transition:.25s;pointer-events:none;max-width:min(92vw,420px);text-align:center;
+    }
+    .toast.visible{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
+
+    .modal-overlay{
+      position:fixed;inset:0;background:rgba(10,22,18,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+      z-index:200;display:none;align-items:center;justify-content:center;padding:16px;
+    }
+    .modal-overlay.visible{display:flex}
+    .modal{
+      background:rgba(15,40,30,.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+      border:1px solid rgba(74,222,128,.2);border-radius:16px;
+      max-width:440px;width:100%;padding:28px 24px;text-align:center;
+      box-shadow:0 20px 60px rgba(0,0,0,.5);
+    }
+    .modal-icon{font-size:48px;margin-bottom:12px}
+    .modal h2{margin:0 0 8px;font-size:1.25rem;color:#f8fafc}
+    .modal p{margin:0 0 20px;color:#94a3b8;font-size:.92rem;line-height:1.5}
+    .modal button{
+      padding:10px 24px;border:none;border-radius:8px;cursor:pointer;
+      font-family:inherit;font-size:.9rem;font-weight:600;
+      background:linear-gradient(135deg,#14532d 0%,#166534 100%);color:#fff;
+      border:1px solid rgba(74,222,128,.2);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="brand">
+        <div class="brand-icon">SQL</div>
+        <div>
+          <h1>Тренажёр SQL</h1>
+          <span>INNER · LEFT/RIGHT · FULL · CROSS JOIN</span>
+        </div>
+      </div>
+      <div class="progress-pill" id="progressPill">Задание <b id="taskNum">1</b> из <b id="taskTotal">4</b></div>
+    </header>
+
+    <section class="task-card" id="taskCard">
+      <div class="task-label" id="taskLabel">Задание 1</div>
+      <p class="task-text" id="taskText"></p>
+    </section>
+
+    <div class="workspace">
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title"><span class="panel-dot dot-editor"></span>Редактор SQL</span>
+        </div>
+        <div class="editor-wrap">
+          <div class="line-nums" id="lineNums">1</div>
+          <textarea class="sql-input" id="sqlInput" spellcheck="false" placeholder="Напишите SQL-запрос…"></textarea>
+        </div>
+        <div class="toolbar">
+          <button type="button" class="btn-run" id="btnRun">▶ Выполнить</button>
+          <button type="button" class="btn-secondary" id="btnReset">Очистить</button>
+          <span class="hint-kbd">Ctrl + Enter</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title"><span class="panel-dot dot-output"></span>Результат выполнения</span>
+        </div>
+        <div class="output-body" id="outputBody">
+          <p class="output-empty">Нажмите «Выполнить», чтобы запустить запрос и увидеть результат проверки.</p>
+        </div>
+      </div>
+
+      <div class="panel bottom-row">
+        <div class="panel-head">
+          <span class="panel-title"><span class="panel-dot dot-schema"></span>Схема базы данных</span>
+        </div>
+        <div class="schema-body" id="schemaBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="modal-overlay" id="modalComplete">
+    <div class="modal">
+      <div class="modal-icon">🎉</div>
+      <h2>Отлично!</h2>
+      <p>Вы освоили соединения таблиц: INNER, LEFT/RIGHT, FULL и CROSS JOIN.</p>
+      <button type="button" id="btnRestart">Пройти заново</button>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const sqlInput = document.getElementById('sqlInput');
+  const lineNums = document.getElementById('lineNums');
+  const outputBody = document.getElementById('outputBody');
+  const schemaBody = document.getElementById('schemaBody');
+  const taskCard = document.getElementById('taskCard');
+  const taskLabel = document.getElementById('taskLabel');
+  const taskText = document.getElementById('taskText');
+  const taskNum = document.getElementById('taskNum');
+  const taskTotal = document.getElementById('taskTotal');
+  const btnRun = document.getElementById('btnRun');
+  const btnReset = document.getElementById('btnReset');
+  const toast = document.getElementById('toast');
+  const modalComplete = document.getElementById('modalComplete');
+  const btnRestart = document.getElementById('btnRestart');
+
+  let taskStep = 0;
+  let db = { tables: {} };
+  let toastTimer = null;
+
+  function cloneDb(src){
+    const tables = {};
+    for (const name of Object.keys(src.tables)) {
+      const t = src.tables[name];
+      tables[name] = {
+        columns: t.columns.map(c => ({ ...c })),
+        rows: (t.rows || []).map(r => ({ ...r }))
+      };
+    }
+    return { tables };
+  }
+
+  function normalizeSql(sql){
+    return sql.replace(/\s+/g, ' ').trim();
+  }
+
+  function stripComments(sql){
+    return sql.replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
+  }
+
+  function splitByComma(str){
+    const parts = [];
+    let cur = '';
+    let inQuote = false;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i];
+      if (ch === "'" && !inQuote) { inQuote = true; cur += ch; continue; }
+      if (ch === "'" && inQuote) {
+        if (str[i + 1] === "'") { cur += "''"; i++; continue; }
+        inQuote = false; cur += ch; continue;
+      }
+      if (ch === ',' && !inQuote) { parts.push(cur.trim()); cur = ''; continue; }
+      cur += ch;
+    }
+    if (cur.trim()) parts.push(cur.trim());
+    return parts;
+  }
+
+  function parseSelectItem(item){
+    item = item.trim();
+    const asMatch = item.match(/^(.+?)\s+AS\s+["`]?(\w+)["`]?$/i);
+    let expr = item, alias = null;
+    if (asMatch) {
+      expr = asMatch[1].trim();
+      alias = asMatch[2].toLowerCase();
+    }
+    if (expr === '*') return { type: 'star' };
+    const q = expr.match(/^["`]?(\w+)["`]?\s*\.\s*["`]?(\w+)["`]?$/);
+    if (q) {
+      const col = q[2].toLowerCase();
+      return { type: 'col', name: q[1].toLowerCase() + '.' + col, alias: alias || col };
+    }
+    const name = expr.replace(/["`]/g, '').toLowerCase();
+    return { type: 'col', name, alias: alias || name };
+  }
+
+  function parseOrderBy(str){
+    const items = [];
+    for (const part of str.split(',')) {
+      const m = part.trim().match(/^(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?(?:\s+(ASC|DESC))?$/i);
+      if (!m) return null;
+      const col = m[1] ? m[1].toLowerCase() + '.' + m[2].toLowerCase() : m[2].toLowerCase();
+      items.push({ col, dir: (m[3] || 'ASC').toUpperCase() });
+    }
+    return items.length ? items : null;
+  }
+
+  function parseTableRef(str){
+    const m = str.trim().match(/^["`]?(\w+)["`]?(?:\s+(?:AS\s+)?["`]?(\w+)["`]?)?$/i);
+    if (!m) return null;
+    const name = m[1].toLowerCase();
+    const alias = (m[2] || m[1]).toLowerCase();
+    if (/^(inner|left|right|full|cross|join|on|where|order|by|as|select|from)$/i.test(alias) && !m[2]) {
+      return { name, alias: name };
+    }
+    return { name, alias };
+  }
+
+  function parseEqCond(str){
+    const m = str.trim().match(
+      /^(\w+)\.(\w+)\s*(\(\s*\+\s*\))?\s*=\s*(\w+)\.(\w+)\s*(\(\s*\+\s*\))?$/i
+    );
+    if (!m) return null;
+    return {
+      leftAlias: m[1].toLowerCase(),
+      leftCol: m[2].toLowerCase(),
+      leftPlus: !!m[3],
+      rightAlias: m[4].toLowerCase(),
+      rightCol: m[5].toLowerCase(),
+      rightPlus: !!m[6]
+    };
+  }
+
+  function parseFromClause(fromPart){
+    fromPart = fromPart.replace(/,\s*(?=(?:INNER|LEFT|RIGHT|FULL|CROSS)\b)/i, ' ').trim();
+    const ansi = fromPart.match(
+      /^(.+?)\s+(INNER\s+JOIN|LEFT(?:\s+OUTER)?\s+JOIN|RIGHT(?:\s+OUTER)?\s+JOIN|FULL(?:\s+OUTER)?\s+JOIN|CROSS\s+JOIN)\s+(.+)$/i
+    );
+    if (ansi) {
+      const left = parseTableRef(ansi[1]);
+      if (!left) return null;
+      const joinTok = ansi[2].toUpperCase();
+      let joinType = 'INNER';
+      if (joinTok.startsWith('LEFT')) joinType = 'LEFT';
+      else if (joinTok.startsWith('RIGHT')) joinType = 'RIGHT';
+      else if (joinTok.startsWith('FULL')) joinType = 'FULL';
+      else if (joinTok.startsWith('CROSS')) joinType = 'CROSS';
+      let rightStr = ansi[3].trim();
+      let on = null;
+      const onMatch = rightStr.match(/^(.+?)\s+ON\s+(.+)$/i);
+      if (onMatch) {
+        rightStr = onMatch[1].trim();
+        on = parseEqCond(onMatch[2]);
+        if (!on) return null;
+      } else if (joinType !== 'CROSS') {
+        return null;
+      }
+      const right = parseTableRef(rightStr);
+      if (!right) return null;
+      return { joinType, tables: [left, right], on };
+    }
+    const parts = splitByComma(fromPart);
+    if (!parts.length) return null;
+    const tables = [];
+    for (const p of parts) {
+      const t = parseTableRef(p);
+      if (!t) return null;
+      tables.push(t);
+    }
+    return { joinType: tables.length > 1 ? 'COMMA' : 'NONE', tables, on: null };
+  }
+
+  function mergeRow(leftRef, leftRow, rightRef, rightRow){
+    const out = {};
+    for (const c of leftRef.table.columns) {
+      const v = leftRow ? leftRow[c.name] : null;
+      out[leftRef.alias + '.' + c.name] = v;
+    }
+    for (const c of rightRef.table.columns) {
+      const v = rightRow ? rightRow[c.name] : null;
+      out[rightRef.alias + '.' + c.name] = v;
+    }
+    return out;
+  }
+
+  function valsEqual(a, b){
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    return a === b || String(a) === String(b);
+  }
+
+  function performJoin(leftRef, rightRef, joinType, on){
+    const L = leftRef.table.rows;
+    const R = rightRef.table.rows;
+    const out = [];
+    if (joinType === 'CROSS') {
+      for (const lr of L) for (const rr of R) out.push(mergeRow(leftRef, lr, rightRef, rr));
+      return out;
+    }
+    const onNorm = { ...on };
+    if (on.leftAlias === rightRef.alias && on.rightAlias === leftRef.alias) {
+      onNorm.leftAlias = on.rightAlias;
+      onNorm.leftCol = on.rightCol;
+      onNorm.rightAlias = on.leftAlias;
+      onNorm.rightCol = on.leftCol;
+    }
+    const pairsEqual = (lr, rr) => valsEqual(lr[onNorm.leftCol], rr[onNorm.rightCol]);
+
+    if (joinType === 'INNER') {
+      for (const lr of L) for (const rr of R) if (pairsEqual(lr, rr)) out.push(mergeRow(leftRef, lr, rightRef, rr));
+      return out;
+    }
+    if (joinType === 'LEFT') {
+      for (const lr of L) {
+        let found = false;
+        for (const rr of R) {
+          if (pairsEqual(lr, rr)) { out.push(mergeRow(leftRef, lr, rightRef, rr)); found = true; }
+        }
+        if (!found) out.push(mergeRow(leftRef, lr, rightRef, null));
+      }
+      return out;
+    }
+    if (joinType === 'RIGHT') {
+      for (const rr of R) {
+        let found = false;
+        for (const lr of L) {
+          if (pairsEqual(lr, rr)) { out.push(mergeRow(leftRef, lr, rightRef, rr)); found = true; }
+        }
+        if (!found) out.push(mergeRow(leftRef, null, rightRef, rr));
+      }
+      return out;
+    }
+    if (joinType === 'FULL') {
+      const matchedR = new Set();
+      for (const lr of L) {
+        let found = false;
+        for (let i = 0; i < R.length; i++) {
+          if (pairsEqual(lr, R[i])) {
+            out.push(mergeRow(leftRef, lr, rightRef, R[i]));
+            matchedR.add(i);
+            found = true;
+          }
+        }
+        if (!found) out.push(mergeRow(leftRef, lr, rightRef, null));
+      }
+      for (let i = 0; i < R.length; i++) {
+        if (!matchedR.has(i)) out.push(mergeRow(leftRef, null, rightRef, R[i]));
+      }
+      return out;
+    }
+    return out;
+  }
+
+  function executeSql(dbState, sql){
+    const messages = [];
+    const cleaned = normalizeSql(stripComments(sql));
+    if (!cleaned) {
+      messages.push({ type: 'err', text: 'Пустой запрос. Введите SQL-команду.' });
+      return { ok: false, messages };
+    }
+
+    const stmts = cleaned.split(';').map(s => s.trim()).filter(Boolean);
+    if (stmts.length !== 1) {
+      messages.push({ type: 'err', text: 'Выполните один SELECT-запрос за раз.' });
+      return { ok: false, messages };
+    }
+
+    const stmt = stmts[0];
+    const selectMatch = stmt.match(/^SELECT\s+(DISTINCT\s+)?(.+)\s+FROM\s+(.+)$/i);
+    if (!selectMatch) {
+      messages.push({ type: 'err', text: 'Неподдерживаемая команда. В этом тренажёре доступен SELECT с JOIN.' });
+      return { ok: false, messages };
+    }
+
+    const distinct = !!selectMatch[1];
+    let rest = selectMatch[3].trim();
+    let orderByStr = null;
+    const orderMatch = rest.match(/\s+ORDER\s+BY\s+(.+)$/i);
+    if (orderMatch) {
+      orderByStr = orderMatch[1].trim();
+      rest = rest.slice(0, orderMatch.index).trim();
+    }
+    let whereStr = null;
+    const whereMatch = rest.match(/\s+WHERE\s+(.+)$/i);
+    if (whereMatch) {
+      whereStr = whereMatch[1].trim();
+      rest = rest.slice(0, whereMatch.index).trim();
+    }
+
+    const fromInfo = parseFromClause(rest);
+    if (!fromInfo) {
+      messages.push({ type: 'err', text: 'Ошибка: не удалось разобрать FROM / JOIN.' });
+      return { ok: false, messages };
+    }
+
+    const tableRefs = [];
+    for (const t of fromInfo.tables) {
+      const table = dbState.tables[t.name];
+      if (!table) {
+        messages.push({ type: 'err', text: 'Ошибка: таблица «' + t.name + '» не найдена.' });
+        return { ok: false, messages };
+      }
+      tableRefs.push({ name: t.name, alias: t.alias, table });
+    }
+
+    let joinType = fromInfo.joinType;
+    let on = fromInfo.on;
+
+    if (joinType === 'COMMA' || joinType === 'NONE') {
+      if (tableRefs.length === 1) {
+        joinType = 'NONE';
+      } else if (tableRefs.length === 2) {
+        if (!whereStr) {
+          joinType = 'CROSS';
+        } else {
+          const parts = whereStr.split(/\s+AND\s+/i).map(s => s.trim());
+          const eq = parseEqCond(parts[0]);
+          if (!eq || parts.length !== 1) {
+            messages.push({ type: 'err', text: 'Ошибка: в WHERE укажите условие соединения вида a.col = b.col.' });
+            return { ok: false, messages };
+          }
+          on = eq;
+          if (eq.rightPlus && !eq.leftPlus) joinType = 'LEFT';
+          else if (eq.leftPlus && !eq.rightPlus) joinType = 'RIGHT';
+          else if (!eq.leftPlus && !eq.rightPlus) joinType = 'INNER';
+          else {
+            messages.push({ type: 'err', text: 'Ошибка: некорректный синтаксис (+).' });
+            return { ok: false, messages };
+          }
+          whereStr = null;
+        }
+      } else {
+        messages.push({ type: 'err', text: 'Ошибка: поддерживается соединение двух таблиц.' });
+        return { ok: false, messages };
+      }
+    } else if (whereStr) {
+      messages.push({ type: 'err', text: 'Ошибка: для ANSI JOIN условие задавайте в ON, без WHERE.' });
+      return { ok: false, messages };
+    }
+
+    let sourceRows;
+    if (joinType === 'NONE') {
+      sourceRows = tableRefs[0].table.rows.map(r => {
+        const out = {};
+        for (const c of tableRefs[0].table.columns) {
+          out[tableRefs[0].alias + '.' + c.name] = r[c.name];
+          out[c.name] = r[c.name];
+        }
+        return out;
+      });
+    } else {
+      if (!on && joinType !== 'CROSS') {
+        messages.push({ type: 'err', text: 'Ошибка: укажите условие ON для JOIN.' });
+        return { ok: false, messages };
+      }
+      sourceRows = performJoin(tableRefs[0], tableRefs[1], joinType, on);
+    }
+
+    if (orderByStr) {
+      const orderItems = parseOrderBy(orderByStr);
+      if (!orderItems) {
+        messages.push({ type: 'err', text: 'Ошибка: не удалось разобрать ORDER BY.' });
+        return { ok: false, messages };
+      }
+      sourceRows = sourceRows.slice().sort((a, b) => {
+        for (const o of orderItems) {
+          const av = a[o.col] !== undefined ? a[o.col] : a[o.col.split('.').pop()];
+          const bv = b[o.col] !== undefined ? b[o.col] : b[o.col.split('.').pop()];
+          let cmp = 0;
+          if (av == null && bv == null) cmp = 0;
+          else if (av == null) cmp = 1;
+          else if (bv == null) cmp = -1;
+          else if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
+          else cmp = String(av).localeCompare(String(bv), 'ru');
+          if (cmp !== 0) return o.dir === 'DESC' ? -cmp : cmp;
+        }
+        return 0;
+      });
+    }
+
+    const items = splitByComma(selectMatch[2]).map(parseSelectItem);
+    if (!items.length) {
+      messages.push({ type: 'err', text: 'Ошибка: укажите столбцы после SELECT.' });
+      return { ok: false, messages };
+    }
+
+    const outCols = [];
+    const projectors = [];
+    for (const it of items) {
+      if (it.type === 'star') {
+        for (const ref of tableRefs) {
+          for (const c of ref.table.columns) {
+            outCols.push(c.name);
+            const key = ref.alias + '.' + c.name;
+            projectors.push(row => row[key]);
+          }
+        }
+      } else {
+        const key = it.name;
+        const sample = sourceRows[0];
+        const bare = key.includes('.') ? key.split('.').pop() : key;
+        if (sample && sample[key] === undefined && sample[bare] === undefined && sourceRows.length) {
+          messages.push({ type: 'err', text: 'Ошибка: столбец «' + it.name + '» не найден.' });
+          return { ok: false, messages };
+        }
+        if (!sourceRows.length) {
+          const known = tableRefs.some(ref =>
+            ref.table.columns.some(c => key === ref.alias + '.' + c.name || key === c.name)
+          );
+          if (!known) {
+            messages.push({ type: 'err', text: 'Ошибка: столбец «' + it.name + '» не найден.' });
+            return { ok: false, messages };
+          }
+        }
+        outCols.push(it.alias);
+        projectors.push(row => (row[key] !== undefined ? row[key] : row[bare]));
+      }
+    }
+
+    let resultRows = sourceRows.map(row => {
+      const out = {};
+      outCols.forEach((name, i) => { out[name] = projectors[i](row); });
+      return out;
+    });
+
+    if (distinct) {
+      const seen = new Set();
+      resultRows = resultRows.filter(row => {
+        const key = outCols.map(c => String(row[c])).join('\0');
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    const resultSet = { columns: outCols, rows: resultRows };
+    messages.push({ type: 'ok', text: 'Выбрано строк: ' + resultRows.length + '.' });
+    return { ok: true, messages, resultSet };
+  }
+
+  const DEPT_COLS = [
+    { name: 'department_id', type: 'INTEGER', pk: true },
+    { name: 'department_name', type: 'VARCHAR2(50)' }
+  ];
+  const EMP_COLS = [
+    { name: 'employee_id', type: 'INTEGER', pk: true },
+    { name: 'full_name', type: 'VARCHAR2(100)' },
+    { name: 'department_id', type: 'INTEGER' }
+  ];
+  const DEPTS = [
+    { department_id: 10, department_name: 'IT' },
+    { department_id: 20, department_name: 'HR' },
+    { department_id: 30, department_name: 'Sales' },
+    { department_id: 40, department_name: 'Marketing' }
+  ];
+  const EMPS = [
+    { employee_id: 1, full_name: 'Иванов И.И.', department_id: 10 },
+    { employee_id: 2, full_name: 'Петров П.П.', department_id: 20 },
+    { employee_id: 3, full_name: 'Сидоров С.С.', department_id: 10 },
+    { employee_id: 4, full_name: 'Козлова К.К.', department_id: null },
+    { employee_id: 5, full_name: 'Новиков Н.Н.', department_id: 30 }
+  ];
+
+  function makeHrDb(){
+    return {
+      tables: {
+        departments: { columns: DEPT_COLS.map(c => ({ ...c })), rows: DEPTS.map(r => ({ ...r })) },
+        employees: { columns: EMP_COLS.map(c => ({ ...c })), rows: EMPS.map(r => ({ ...r })) }
+      }
+    };
+  }
+
+  function sameVal(a, b){
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    return a === b || String(a) === String(b);
+  }
+
+  function cellKey(v){
+    return v == null ? '\0NULL\0' : String(v);
+  }
+
+  function matchResult(resultSet, expected, opts){
+    if (!resultSet) return { pass: false, hint: 'Выполните SELECT-запрос.' };
+    const cols = resultSet.columns.map(c => c.toLowerCase());
+    const expCols = expected.columns.map(c => c.toLowerCase());
+    if (cols.length !== expCols.length || cols.some((c, i) => c !== expCols[i])) {
+      return { pass: false, hint: 'Ожидаемые столбцы: ' + expected.columns.join(', ') + '.' };
+    }
+    if (resultSet.rows.length !== expected.rows.length) {
+      return { pass: false, hint: 'Ожидается строк: ' + expected.rows.length + ', получено: ' + resultSet.rows.length + '.' };
+    }
+    const ordered = !opts || opts.ordered !== false;
+    if (ordered) {
+      for (let i = 0; i < expected.rows.length; i++) {
+        for (let j = 0; j < expCols.length; j++) {
+          if (!sameVal(resultSet.rows[i][resultSet.columns[j]], expected.rows[i][j])) {
+            return { pass: false, hint: opts && opts.hint ? opts.hint : 'Результат не совпадает с ожидаемым. Проверьте тип JOIN и условие.' };
+          }
+        }
+      }
+    } else {
+      const keyOf = row => expCols.map((_, j) => cellKey(row[resultSet.columns[j]])).join('\0');
+      const got = resultSet.rows.map(keyOf).sort();
+      const exp = expected.rows.map(r => r.map(cellKey).join('\0')).sort();
+      if (got.some((k, i) => k !== exp[i])) {
+        return { pass: false, hint: opts && opts.hint ? opts.hint : 'Набор строк не совпадает с ожидаемым.' };
+      }
+    }
+    return { pass: true };
+  }
+
+  const SYNTAX_INNER =
+    '<br><br><code>SELECT e.full_name,<br>       d.department_name<br>  FROM employees e, departments d<br> WHERE e.department_id = d.department_id;</code>';
+  const SYNTAX_OUTER =
+    '<br><br><code>SELECT e.full_name,<br>       d.department_name<br>  FROM employees e<br>  LEFT JOIN departments d<br>    ON e.department_id = d.department_id;</code>' +
+    '<br><br><code>SELECT e.full_name,<br>       d.department_name<br>  FROM employees e, departments d<br> WHERE e.department_id = d.department_id (+);</code>';
+  const SYNTAX_FULL =
+    '<br><br><code>SELECT ...<br>FROM a<br>FULL JOIN b<br>ON b.id = a.id;</code>';
+  const SYNTAX_CROSS =
+    '<br><br><code>SELECT ...<br>FROM a<br>CROSS JOIN b;</code>';
+
+  const INNER_ROWS = [
+    ['Иванов И.И.', 'IT'],
+    ['Петров П.П.', 'HR'],
+    ['Сидоров С.С.', 'IT'],
+    ['Новиков Н.Н.', 'Sales']
+  ];
+  const LEFT_ROWS = [
+    ['Иванов И.И.', 'IT'],
+    ['Петров П.П.', 'HR'],
+    ['Сидоров С.С.', 'IT'],
+    ['Козлова К.К.', null],
+    ['Новиков Н.Н.', 'Sales']
+  ];
+  const FULL_ROWS = [
+    ['Иванов И.И.', 'IT'],
+    ['Петров П.П.', 'HR'],
+    ['Сидоров С.С.', 'IT'],
+    ['Козлова К.К.', null],
+    ['Новиков Н.Н.', 'Sales'],
+    [null, 'Marketing']
+  ];
+  const CROSS_ROWS = EMPS.flatMap(e => DEPTS.map(d => [e.full_name, d.department_name]));
+
+  const TASKS = [
+    {
+      id: 'inner_join',
+      label: 'INNER JOIN',
+      text: 'Выведите <b>full_name</b> и <b>department_name</b> для сотрудников, у которых есть отдел (только совпадающие строки).' + SYNTAX_INNER,
+      initDb: () => makeHrDb(),
+      check(dbState, result){
+        return matchResult(result && result.resultSet, {
+          columns: ['full_name', 'department_name'],
+          rows: INNER_ROWS
+        }, { ordered: false, hint: 'FROM employees e, departments d WHERE e.department_id = d.department_id' });
+      }
+    },
+    {
+      id: 'left_join',
+      label: 'LEFT JOIN и RIGHT JOIN',
+      text: 'Выведите <b>всех</b> сотрудников и их отделы (если есть). Подойдёт LEFT JOIN или синтаксис с <b>(+)</b>.' + SYNTAX_OUTER,
+      initDb: () => makeHrDb(),
+      check(dbState, result){
+        return matchResult(result && result.resultSet, {
+          columns: ['full_name', 'department_name'],
+          rows: LEFT_ROWS
+        }, { ordered: false, hint: 'LEFT JOIN … ON e.department_id = d.department_id  или  WHERE e.department_id = d.department_id (+)' });
+      }
+    },
+    {
+      id: 'full_join',
+      label: 'FULL JOIN',
+      text: 'Выведите <b>full_name</b> и <b>department_name</b> так, чтобы попали и сотрудники без отдела, и отделы без сотрудников.' + SYNTAX_FULL,
+      initDb: () => makeHrDb(),
+      check(dbState, result){
+        return matchResult(result && result.resultSet, {
+          columns: ['full_name', 'department_name'],
+          rows: FULL_ROWS
+        }, { ordered: false, hint: 'FROM employees e FULL JOIN departments d ON e.department_id = d.department_id' });
+      }
+    },
+    {
+      id: 'cross_join',
+      label: 'CROSS JOIN',
+      text: 'Выведите декартово произведение: все пары <b>full_name</b> × <b>department_name</b>.' + SYNTAX_CROSS,
+      initDb: () => makeHrDb(),
+      check(dbState, result){
+        return matchResult(result && result.resultSet, {
+          columns: ['full_name', 'department_name'],
+          rows: CROSS_ROWS
+        }, { ordered: false, hint: 'FROM employees e CROSS JOIN departments d' });
+      }
+    }
+  ];
+
+  const COMPLETE_TEXT = 'Все задания выполнены! Вы освоили INNER, LEFT/RIGHT, FULL и CROSS JOIN.';
+
+  taskTotal.textContent = String(TASKS.length);
+
+  function updateLineNums(){
+    const lines = sqlInput.value.split('\n').length || 1;
+    lineNums.textContent = Array.from({ length: lines }, (_, i) => i + 1).join('\n');
+  }
+
+  function renderResultTable(resultSet){
+    if (!resultSet || !resultSet.columns.length) return '';
+    const ths = resultSet.columns.map(c => '<th>' + escapeHtml(c) + '</th>').join('');
+    const trs = resultSet.rows.length
+      ? resultSet.rows.map(row => {
+          const tds = resultSet.columns.map(c => '<td>' + escapeHtml(row[c] == null ? '' : row[c]) + '</td>').join('');
+          return '<tr>' + tds + '</tr>';
+        }).join('')
+      : '<tr><td colspan="' + resultSet.columns.length + '" style="color:#64748b;font-style:italic">Нет строк</td></tr>';
+    return '<table class="data-table"><thead><tr>' + ths + '</tr></thead><tbody>' + trs + '</tbody></table>';
+  }
+
+  function renderOutput(messages, checkResult, resultSet){
+    if (!messages.length && !checkResult && !resultSet) {
+      outputBody.innerHTML = '<p class="output-empty">Нажмите «Выполнить», чтобы запустить запрос и увидеть результат проверки.</p>';
+      return;
+    }
+    let html = '';
+    for (const m of messages) {
+      html += '<p class="msg msg-' + m.type + '">' + escapeHtml(m.text) + '</p>';
+    }
+    if (resultSet) html += renderResultTable(resultSet);
+    if (checkResult) {
+      if (checkResult.pass) {
+        html += '<p class="msg msg-ok">✓ Задание выполнено верно!</p>';
+      } else if (checkResult.hint) {
+        html += '<p class="msg msg-info">Подсказка: ' + escapeHtml(checkResult.hint) + '</p>';
+      }
+    }
+    outputBody.innerHTML = html;
+  }
+
+  function renderSchema(){
+    const names = Object.keys(db.tables).sort();
+    if (!names.length) {
+      schemaBody.innerHTML = '<p class="output-empty">Нет данных.</p>';
+      return;
+    }
+    schemaBody.innerHTML = names.map(name => {
+      const table = db.tables[name];
+      const cols = table.columns;
+      const lis = cols.map(c => {
+        let badges = '';
+        if (c.pk) badges += '<span class="col-pk">PK</span>';
+        return '<li><span class="col-name">' + escapeHtml(c.name) + '</span><span class="col-type">' + escapeHtml(c.type) + '</span>' + badges + '</li>';
+      }).join('');
+      let dataHtml = '';
+      if (!table.rows.length) {
+        dataHtml = '<p class="data-empty">Нет строк</p>';
+      } else {
+        const ths = cols.map(c => '<th>' + escapeHtml(c.name) + '</th>').join('');
+        const trs = table.rows.map(row => {
+          const tds = cols.map(c => '<td>' + escapeHtml(row[c.name] == null ? '' : row[c.name]) + '</td>').join('');
+          return '<tr>' + tds + '</tr>';
+        }).join('');
+        dataHtml = '<table class="data-table"><thead><tr>' + ths + '</tr></thead><tbody>' + trs + '</tbody></table>';
+      }
+      return '<div class="schema-table"><div class="schema-table-name">' + escapeHtml(name) + '</div><ul class="schema-cols">' + lis + '</ul>' + dataHtml + '</div>';
+    }).join('');
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function showToast(text){
+    toast.textContent = text;
+    toast.classList.add('visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('visible'), 2800);
+  }
+
+  function initTask(step){
+    const task = TASKS[step];
+    if (!task) return;
+    db = task.initDb ? task.initDb(db) : { tables: {} };
+    sqlInput.value = '';
+    updateLineNums();
+    renderSchema();
+    renderOutput([], null);
+  }
+
+  function updateBanner(){
+    taskCard.classList.remove('success');
+    if (taskStep >= TASKS.length) {
+      taskLabel.textContent = 'Готово';
+      taskText.innerHTML = COMPLETE_TEXT;
+      taskCard.classList.add('success');
+      taskNum.textContent = String(TASKS.length);
+      return;
+    }
+    const t = TASKS[taskStep];
+    taskLabel.textContent = t.label;
+    taskText.innerHTML = t.text;
+    taskNum.textContent = String(taskStep + 1);
+  }
+
+  function runQuery(){
+    if (taskStep >= TASKS.length) return;
+    const task = TASKS[taskStep];
+    const snapshot = cloneDb(db);
+    const result = executeSql(db, sqlInput.value);
+    renderSchema();
+
+    let checkResult = null;
+    if (result.ok) {
+      checkResult = task.check(db, result);
+      if (checkResult.pass) {
+        taskStep++;
+        updateBanner();
+        if (taskStep >= TASKS.length) {
+          renderOutput(result.messages, checkResult, result.resultSet);
+          modalComplete.classList.add('visible');
+          return;
+        }
+        showToast('Задание выполнено — переходите к следующему.');
+        initTask(taskStep);
+        renderOutput(result.messages, checkResult, result.resultSet);
+        return;
+      }
+      db = snapshot;
+      renderSchema();
+    }
+
+    renderOutput(result.messages, checkResult, result.resultSet);
+  }
+
+  function clearEditor(){
+    if (taskStep >= TASKS.length) return;
+    sqlInput.value = '';
+    updateLineNums();
+  }
+
+  function restartAll(){
+    taskStep = 0;
+    modalComplete.classList.remove('visible');
+    updateBanner();
+    initTask(0);
+  }
+
+  sqlInput.addEventListener('input', updateLineNums);
+  sqlInput.addEventListener('scroll', () => { lineNums.scrollTop = sqlInput.scrollTop; });
+  sqlInput.addEventListener('keydown', e => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = sqlInput.selectionStart;
+      sqlInput.value = sqlInput.value.slice(0, start) + '  ' + sqlInput.value.slice(sqlInput.selectionEnd);
+      sqlInput.selectionStart = sqlInput.selectionEnd = start + 2;
+      updateLineNums();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      runQuery();
+    }
+  });
+
+  btnRun.addEventListener('click', runQuery);
+  btnReset.addEventListener('click', clearEditor);
+  btnRestart.addEventListener('click', restartAll);
+  modalComplete.addEventListener('click', e => {
+    if (e.target === modalComplete) modalComplete.classList.remove('visible');
+  });
+
+  updateBanner();
+  initTask(0);
+})();
+</script>
+</body>
+</html>
