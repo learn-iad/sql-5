@@ -1,0 +1,4 @@
+# Local preview server — not for GitHub Pages
+start-local.bat
+start-local.ps1
+__pycache__/

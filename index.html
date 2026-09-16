@@ -494,17 +494,34 @@
         if (expr[i + 1] === "'") { cur += "''"; i++; continue; }
         inQuote = false; cur += ch; continue;
       }
-      if (!inQuote && ch === '|' && expr[i + 1] === '|') {
-        parts.push(cur.trim()); cur = ''; i++; continue;
-      }
       if (!inQuote) {
-        if (ch === '(') depth++;
-        else if (ch === ')') depth--;
+        if (ch === '(') { depth++; cur += ch; continue; }
+        if (ch === ')') { depth--; cur += ch; continue; }
+        if (ch === '|' && expr[i + 1] === '|' && depth === 0) {
+          parts.push(cur.trim()); cur = ''; i++; continue;
+        }
       }
       cur += ch;
     }
     if (cur.trim()) parts.push(cur.trim());
     return parts.length ? parts : [expr];
+  }
+
+  function hasConcatOp(expr){
+    let inQuote = false, depth = 0;
+    for (let i = 0; i < expr.length - 1; i++) {
+      const ch = expr[i];
+      if (ch === "'") {
+        if (inQuote && expr[i + 1] === "'") { i++; continue; }
+        inQuote = !inQuote;
+        continue;
+      }
+      if (inQuote) continue;
+      if (ch === '(') depth++;
+      else if (ch === ')') depth--;
+      else if (depth === 0 && ch === '|' && expr[i + 1] === '|') return true;
+    }
+    return false;
   }
 
   function evalExpr(expr, row, ctx){
@@ -529,6 +546,15 @@
     const num = expr.match(/^-?\d+(\.\d+)?$/);
     if (num) return parseFloat(expr);
 
+    // '[' || TO_CHAR(...) || ']' starts with a quote but is concatenation,
+    // not a single string literal — check || before unquote.
+    if (hasConcatOp(expr)) {
+      return splitConcat(expr).map(p => {
+        const v = evalExpr(p, row, ctx);
+        return v == null ? '' : String(v);
+      }).join('');
+    }
+
     if (expr.startsWith("'")) return unquoteStr(expr);
 
     const col = expr.replace(/["`]/g, '').toLowerCase();
@@ -538,13 +564,6 @@
       if (row[bare] !== undefined) return row[bare];
     }
     if (ctx && ctx.columns && ctx.columns.includes(col)) return row ? row[col] : undefined;
-
-    if (expr.includes('||')) {
-      return splitConcat(expr).map(p => {
-        const v = evalExpr(p, row, ctx);
-        return v == null ? '' : String(v);
-      }).join('');
-    }
 
     throw new Error('Не удалось вычислить выражение: ' + expr);
   }
